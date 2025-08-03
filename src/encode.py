@@ -94,8 +94,8 @@ def main(
         filename = filenames[0]
         file_id = filename.split(".")[0]
         filepath = os.path.join(save_path, f"{file_id}.srec")
-        print(f"In for loop in encode, type(x): {type(x)}")
-        print(f"In for loop in encode shape of x: {x.size()}")
+        #print(f"In for loop in encode, type(x): {type(x)}")
+        #print(f"In for loop in encode shape of x: {x.size()}")
         with encoder_time_accumulator.execute():
             log_likelihood_bits, entropy_coding_bytes = coder.encode(
                 x, filepath)
