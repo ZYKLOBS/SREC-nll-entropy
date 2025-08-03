@@ -172,7 +172,10 @@ class Bitcoding(object):
 
         if levels == 4:
             S = S.reshape(-1)
-            S = F.pad(S, [0, S.shape[0] % 4])
+            #CHANGED
+            pad_len = (4 - (S.shape[0] % 4)) % 4
+            S = F.pad(S, (0, pad_len))
+            #END OF CHANGED
             assert S.shape[0] % 4 == 0
             N = S.shape[0]//4
 
