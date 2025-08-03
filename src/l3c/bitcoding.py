@@ -30,6 +30,9 @@ from src.l3c import coders, coders_helpers
 from src.l3c import logistic_mixture as lm
 from src.l3c import quantizer, timer
 
+from datetime import datetime #To get custom timestamp to save nll and entropy
+#Maybe instead track batch iteration and use that instead
+
 
 class Bitcoding(object):
     """
@@ -65,8 +68,18 @@ class Bitcoding(object):
         x = x.cuda()
         self.compressor.eval()
 
+
+        #CHANGED
+        #Here we will store the values for nll and entropy later on by passing it down to the functions that get called and at the end
+        #in logistic_mixture.py appending to these arrays
+
+        nll_storage_arr = []
+        entropy_storage_arr = []
+
+        #END OF CHANGED
+
         with torch.no_grad():
-            bits = self.compressor(x)
+            bits = self.compressor(x, nll_storage_arr=nll_storage_arr, entropy_storage_arr=entropy_storage_arr)
 
         entropy_coding_bytes = []  # bytes used by different scales
 
@@ -86,6 +99,14 @@ class Bitcoding(object):
                             y_i,
                             lm_probs.probs.contiguous(),
                             y_i, self.compressor.loss_fn, fout))
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+
+        torch.save({
+            'nll': nll_storage_arr,
+            'entropy': entropy_storage_arr
+        }, f"{pout}_stats_{timestamp}.pt")
+
         return bits, entropy_coding_bytes
 
     def decomp_scale_times(self) -> List[float]:
@@ -216,7 +237,7 @@ class Bitcoding(object):
 
         _, entropy_coding_bytes_per_c = self.code_with_cdf(
             l, bn.shape, encoder, dmll)
-
+        #Maybe use this as entropy? Instead of sum use tensor directly?
         return sum(entropy_coding_bytes_per_c)
 
     def decode_scale(self,
@@ -247,6 +268,8 @@ class Bitcoding(object):
         return bn
 
     def code_with_cdf(self, l, bn_shape, bn_coder, dmll):
+        #AGAIN CDF HERE
+        #METHOD OF INTEREST?
         """
         :param l: predicted distribution, i.e., NKpHW, see DiscretizedMixLogisticLoss
         :param bn_shape: shape of the bottleneck to encode/decode
@@ -256,6 +279,7 @@ class Bitcoding(object):
         :param dmll: instance of DiscretizedMixLogisticLoss
         :return: decoded bottleneck, list of all extra info produced by `bn_coder`.
         """
+        #print(f"l: {l}")
         N, C, H, W = bn_shape
         coding = coders_helpers.CodingCDFNonshared(
             l, total_C=C, dmll=dmll)

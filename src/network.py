@@ -11,13 +11,18 @@ from src.l3c import edsr
 from src.l3c import logistic_mixture as lm
 from src.l3c import prob_clf, quantizer
 
+#custom
+import torch.nn.functional as F
 
+# 4 pixel ignorieren/average von den anderen 3
+#
 class LogisticMixtureProbability(NamedTuple):
     name: str
     pixel_index: int
-    probs: torch.Tensor
-    lower: torch.Tensor
-    upper: torch.Tensor
+    probs: torch.Tensor #find out shape from these
+    lower: torch.Tensor #shape
+    upper: torch.Tensor #shape
+
 
 
 Probs = Tuple[torch.Tensor, Optional[LogisticMixtureProbability], int]
@@ -49,17 +54,30 @@ class Bits:
         self.add_with_size(
             key, nll.sum(), np.prod(nll.size()))
 
+
     def add_lm(
             self, y_i: torch.Tensor,
             lm_probs: LogisticMixtureProbability,
-            loss_fn: lm.DiscretizedMixLogisticLoss) -> None:
+            loss_fn: lm.DiscretizedMixLogisticLoss,
+            nll_storage_arr=None,
+            entropy_storage_arr=None
+        ) -> None:
+        #print("In ADD_LM")
         assert lm_probs.probs.shape[-2:] == y_i.shape[-2:], (
             lm_probs.probs.shape, y_i.shape)
         if configs.log_likelihood:
-            nll = loss_fn(y_i, lm_probs.probs)
+            #print("in nll config!")
+            nll = loss_fn(y_i, lm_probs.probs,   nll_storage_arr=nll_storage_arr,
+                        entropy_storage_arr=entropy_storage_arr)
+
+            #NLL IS NCHW, see logistic mixture
+            #print(nll)
+            #print(nll.shape)
             self.add(lm_probs.name, nll)
         if configs.collect_probs:
             self.probs.append((y_i, lm_probs, -1))
+            #print(f"LOOP BEGIN\n{'-'*50}")
+            #print(f"Probs: {self.probs}")
 
     def add_uniform(
             self,
@@ -118,6 +136,7 @@ class PixDecoder(nn.Module):
     def __init__(self, scale: int) -> None:
         super().__init__()
         self.loss_fn = lm.DiscretizedMixLogisticLoss(rgb_scale=True)
+        #loss fn -> instanz von Klasse, self.loss_fn(...) dann forward
         self.scale = scale
 
     def forward_probs(
@@ -132,8 +151,12 @@ class PixDecoder(nn.Module):
                 x: torch.Tensor,
                 y: torch.Tensor,
                 ctx: torch.Tensor,
+                nll_storage_arr: Optional[List[torch.Tensor]] = None,
+                entropy_storage_arr: Optional[List[torch.Tensor]] = None
                 ) -> Tuple[Bits, torch.Tensor]:
         bits = Bits()
+
+        #print("In forward pass currently of PixDecoder")
 
         # Check y are filled with integers.
         # y.long().float() == y
@@ -157,7 +180,8 @@ class PixDecoder(nn.Module):
         # different util of grid.
         # y: N 3 H W -> N 4 3 H/2 W/2
         y_slices = group_2x2(y)
-
+        #print(f"y_slices {y_slices}")
+        #print(f"y_slices.shape {y_slices}")
         gen = self.forward_probs(x, ctx)
         try:
             for i, y_slice in enumerate(y_slices):
@@ -166,14 +190,22 @@ class PixDecoder(nn.Module):
                 else:
                     lm_probs = gen.send(y_slices[i-1])
                 _, _, h, w = y_slice.size()
+
                 lm_probs = LogisticMixtureProbability(
                     name=lm_probs.name,
                     pixel_index=lm_probs.pixel_index,
                     probs=lm_probs.probs[..., :h, :w],
                     lower=lm_probs.lower[..., :h, :w],
                     upper=lm_probs.upper[..., :h, :w])
-                bits.add_lm(y_slice, lm_probs, self.loss_fn)
+                #print("Before add_lm")
+                #Debugger in Konsole nutzen ?  https://docs.python.org/3/library/pdb.html
+                bits.add_lm(y_slice, lm_probs, self.loss_fn, nll_storage_arr=nll_storage_arr,
+                        entropy_storage_arr=entropy_storage_arr)
+
+
+
         except StopIteration as e:
+
             last_pixels, ctx = e.value
             last_slice = y_slices[-1]
             _, _, last_h, last_w = last_slice.size()
@@ -181,6 +213,34 @@ class PixDecoder(nn.Module):
             assert torch.all(last_pixels == last_slice), (
                 last_pixels[last_pixels != last_slice],
                 last_slice[last_pixels != last_slice])
+            #import pdb;pdb.set_trace()
+            #I think the pixels are oriented like this-> [tl, tr, bl, br]
+            #CHANGED this shit is so fucking ghetto holy moly
+            #print("\nPixel 4 NLL Calculation\n" + "-"*50 + "\n\n")
+
+
+            # Reuse last classifier available? So basically bottom left? Maybe here use formula of paper and combine them if legal?
+            clf_4 = self.mix_logits_prob_clf[2]
+
+            # CTX is not the right shape if the image has uneven dimensions.
+            #This will break the code later on so I just pad it here with 0 in the hope that the last dimension doesn't make that
+            #much of a difference for the image? This is the ghetto shit I talked about in the comment above, but currently
+            #I don't know what else to do here atm so this must suffice for now
+            _, _, H, W = ctx.shape #Reference see above code segment
+            pad_h = 1 if H % 2 else 0
+            pad_w = 1 if W % 2 else 0
+            ctx = F.pad(ctx, (0, pad_w, 0, pad_h))
+
+            y_4 = last_slice  # y_slices[3] -> bottom right pixel
+
+            probs_4 = clf_4(ctx)
+            probs_4 = probs_4[..., :y_4.shape[2], :y_4.shape[3]]  # Still crop to match target (safety? see above?)
+
+
+            nll_4 = self.loss_fn(y_4, probs_4, nll_storage_arr=nll_storage_arr,
+                        entropy_storage_arr=entropy_storage_arr)
+            #print("Pixel 4 NLL shape:", nll_4.shape) #Insallah dis is working
+            #END OF CHANGED
 
         return bits, ctx
 
@@ -211,6 +271,7 @@ class StrongPixDecoder(PixDecoder):
                     f"{len(self.mix_logits_prob_clf)}, {len(self.feat_convs)}"
         )
 
+
     def forward_probs(
             self,
             x: torch.Tensor,
@@ -220,7 +281,9 @@ class StrongPixDecoder(PixDecoder):
         # mode is used to key tensorboard loggings
         mode = "train" if self.training else "eval"
         # x: N 3 H W, [0, 255]
+        #print(f"x shape in forward probs: {x.size}")
         # pix_sum: N 3 H W, [0, 1020]
+        #print(f"In forward_probs of strong pix dec")
         pix_sum = x * 4
         xy_normalized = x / 127.5 - 1
         y_i = torch.tensor([], device=x.device)
@@ -229,8 +292,10 @@ class StrongPixDecoder(PixDecoder):
         for i, (rgb_dec, clf, feat_conv) in enumerate(
                 zip(self.rgb_decs,  # type: ignore
                     self.mix_logits_prob_clf, self.feat_convs)):
+            #print(f"i: {i}")
             xy_normalized = torch.cat((xy_normalized, y_i / 127.5 - 1), dim=1)
             z = rgb_dec(xy_normalized, ctx)
+            #print(f"z: {z}")
             ctx = feat_conv(z)
 
             probs = clf(z)
@@ -244,7 +309,8 @@ class StrongPixDecoder(PixDecoder):
             y_i = data.pad(y_i, x.shape[-2], x.shape[-1])
             pix_sum -= y_i
 
-        # Last pixel in 2x2 grid should be <= 255 and >= 0
+
+
         return pix_sum, ctx
 
 
@@ -288,7 +354,9 @@ class Compressor(nn.Module):
         ])
 
     def forward(self,  # type: ignore
-                x: torch.Tensor
+                x: torch.Tensor,
+        nll_storage_arr: Optional[List[torch.Tensor]] = None,
+        entropy_storage_arr: Optional[List[torch.Tensor]] = None
                 ) -> Bits:
         downsampled = data.average_downsamples(x)
         assert len(downsampled)-1 == len(self.decs), (
@@ -303,6 +371,9 @@ class Compressor(nn.Module):
                 self.decs, self.ctx_upsamplers,
                 downsampled[::-1], downsampled[-2::-1]):
             ctx = ctx_upsampler(ctx)
-            dec_bits, ctx = dec(x, util.tensor_round(y), ctx)
+            dec_bits, ctx = dec(x, util.tensor_round(y), ctx,
+                                nll_storage_arr=nll_storage_arr,
+                                entropy_storage_arr=entropy_storage_arr
+                                )
             bits.update(dec_bits)
         return bits

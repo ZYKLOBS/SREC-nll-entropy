@@ -1,0 +1,8 @@
+LICENSE
+setup.py
+/SReC/src/torchac/torchac_backend/torchac.cpp
+/SReC/src/torchac/torchac_backend/torchac_kernel.cu
+torchac_backend_gpu.egg-info/PKG-INFO
+torchac_backend_gpu.egg-info/SOURCES.txt
+torchac_backend_gpu.egg-info/dependency_links.txt
+torchac_backend_gpu.egg-info/top_level.txt

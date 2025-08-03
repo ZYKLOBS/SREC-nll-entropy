@@ -13,6 +13,8 @@ from src import network
 from src.l3c import bitcoding, timer
 
 
+
+
 @click.command()
 @click.option("--path", type=click.Path(exists=True),
               help="Directory of images.")
@@ -30,7 +32,7 @@ from src.l3c import bitcoding, timer
               help="Number of clusters in logistic mixture model.")
 @click.option("--crop", type=int, default=0,
               help="Size of image crops in training. 0 means no crop.")
-@click.option("--log-likelihood", is_flag=True, default=False,
+@click.option("--log-likelihood", is_flag=True, default=True, #THIS NEEDS TO BE TRUE FOR GETTING LOG LIKELIHOOD
               help="Turn on log-likelihood calculations.")
 @click.option("--decode", is_flag=True, default=False,
               help="Turn on decoding to verify coding correctness.")
@@ -84,22 +86,45 @@ def main(
     total_num_subpixels = 0
     total_entropy_coding_bytes: np.ndarray = 0  # type: ignore
     total_log_likelihood_bits = network.Bits()
+    print(total_log_likelihood_bits.probs)
+
 
     for i, (filenames, x) in enumerate(loader):
         assert len(filenames) == 1, filenames
         filename = filenames[0]
         file_id = filename.split(".")[0]
         filepath = os.path.join(save_path, f"{file_id}.srec")
-
+        print(f"In for loop in encode, type(x): {type(x)}")
+        print(f"In for loop in encode shape of x: {x.size()}")
         with encoder_time_accumulator.execute():
             log_likelihood_bits, entropy_coding_bytes = coder.encode(
                 x, filepath)
+
+        # #CHANGE
+        # num_subpixels = np.prod(x.size())
+        # channels = x.size(1)
+        #
+        # entropy_bits = np.sum(entropy_coding_bytes) * 8
+        # entropy_per_subpixel = entropy_bits / num_subpixels
+        # entropy_per_pixel = entropy_per_subpixel * channels
+        #
+        # #DEBUG STATEMENTS
+        # print(f"[{filename}]")
+        # print(f"  Entropy(bpsp): {entropy_per_subpixel:.4f}")
+        # print(f"  Entropy(bpp) : {entropy_per_pixel:.4f}")
+        # #END OF DEBUG STATEMENTS
+        #
+        # #END OF CHANGE
+
 
         total_file_bytes += os.path.getsize(filepath)
         total_entropy_coding_bytes += np.array(entropy_coding_bytes)
         total_num_subpixels += np.prod(x.size())
         if configs.log_likelihood:
-            total_log_likelihood_bits.add_bits(log_likelihood_bits)
+            print(f"NLL keys: {list(log_likelihood_bits.get_keys())}")
+            for key in log_likelihood_bits.get_keys():
+                bpsp = log_likelihood_bits.get_self_bpsp(key).item()
+                print(f"  NLL {key} (bpsp): {bpsp:.4f}")
 
         if decode:
             with decoder_time_accumulator.execute():

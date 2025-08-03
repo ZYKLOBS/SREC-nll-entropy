@@ -5,4 +5,4 @@ resblocks = 3
 K = 10
 plot = ""
 log_likelihood = True
-collect_probs = False
+collect_probs = True
