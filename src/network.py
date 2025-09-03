@@ -11,11 +11,10 @@ from src.l3c import edsr
 from src.l3c import logistic_mixture as lm
 from src.l3c import prob_clf, quantizer
 
-#custom
+#custom import
 import torch.nn.functional as F
 
-# 4 pixel ignorieren/average von den anderen 3
-#
+
 class LogisticMixtureProbability(NamedTuple):
     name: str
     pixel_index: int
@@ -62,7 +61,6 @@ class Bits:
             nll_storage_arr=None,
             entropy_storage_arr=None
         ) -> None:
-        #print("In ADD_LM")
         assert lm_probs.probs.shape[-2:] == y_i.shape[-2:], (
             lm_probs.probs.shape, y_i.shape)
         if configs.log_likelihood:
@@ -71,13 +69,10 @@ class Bits:
                         entropy_storage_arr=entropy_storage_arr)
 
             #NLL IS NCHW, see logistic mixture
-            #print(nll)
-            #print(nll.shape)
             self.add(lm_probs.name, nll)
         if configs.collect_probs:
             self.probs.append((y_i, lm_probs, -1))
-            #print(f"LOOP BEGIN\n{'-'*50}")
-            #print(f"Probs: {self.probs}")
+
 
     def add_uniform(
             self,
@@ -156,7 +151,6 @@ class PixDecoder(nn.Module):
                 ) -> Tuple[Bits, torch.Tensor]:
         bits = Bits()
 
-        #print("In forward pass currently of PixDecoder")
 
         # Check y are filled with integers.
         # y.long().float() == y
@@ -180,8 +174,6 @@ class PixDecoder(nn.Module):
         # different util of grid.
         # y: N 3 H W -> N 4 3 H/2 W/2
         y_slices = group_2x2(y)
-        #print(f"y_slices {y_slices}")
-        #print(f"y_slices.shape {y_slices}")
         gen = self.forward_probs(x, ctx)
         try:
             for i, y_slice in enumerate(y_slices):
@@ -197,8 +189,6 @@ class PixDecoder(nn.Module):
                     probs=lm_probs.probs[..., :h, :w],
                     lower=lm_probs.lower[..., :h, :w],
                     upper=lm_probs.upper[..., :h, :w])
-                #print("Before add_lm")
-                #Debugger in Konsole nutzen ?  https://docs.python.org/3/library/pdb.html
                 bits.add_lm(y_slice, lm_probs, self.loss_fn, nll_storage_arr=nll_storage_arr,
                         entropy_storage_arr=entropy_storage_arr)
 
@@ -213,13 +203,9 @@ class PixDecoder(nn.Module):
             assert torch.all(last_pixels == last_slice), (
                 last_pixels[last_pixels != last_slice],
                 last_slice[last_pixels != last_slice])
-            #import pdb;pdb.set_trace()
-            #I think the pixels are oriented like this-> [tl, tr, bl, br]
-            #CHANGED this shit is so fucking ghetto holy moly
-            #print("\nPixel 4 NLL Calculation\n" + "-"*50 + "\n\n")
 
-
-            # Reuse last classifier available? So basically bottom left? Maybe here use formula of paper and combine them if legal?
+            #CHANGED
+            # Reuse last classifier available? So basically bottom right? Maybe here use formula of paper and combine them if legal?
             clf_4 = self.mix_logits_prob_clf[2]
 
             # CTX is not the right shape if the image has uneven dimensions.
@@ -239,7 +225,7 @@ class PixDecoder(nn.Module):
 
             nll_4 = self.loss_fn(y_4, probs_4, nll_storage_arr=nll_storage_arr,
                         entropy_storage_arr=entropy_storage_arr)
-            #print("Pixel 4 NLL shape:", nll_4.shape) #Insallah dis is working
+            #print("Pixel 4 NLL shape:", nll_4.shape) #Insallah this is working
             #END OF CHANGED
 
         return bits, ctx
@@ -281,9 +267,6 @@ class StrongPixDecoder(PixDecoder):
         # mode is used to key tensorboard loggings
         mode = "train" if self.training else "eval"
         # x: N 3 H W, [0, 255]
-        #print(f"x shape in forward probs: {x.size}")
-        # pix_sum: N 3 H W, [0, 1020]
-        #print(f"In forward_probs of strong pix dec")
         pix_sum = x * 4
         xy_normalized = x / 127.5 - 1
         y_i = torch.tensor([], device=x.device)
@@ -292,10 +275,8 @@ class StrongPixDecoder(PixDecoder):
         for i, (rgb_dec, clf, feat_conv) in enumerate(
                 zip(self.rgb_decs,  # type: ignore
                     self.mix_logits_prob_clf, self.feat_convs)):
-            #print(f"i: {i}")
             xy_normalized = torch.cat((xy_normalized, y_i / 127.5 - 1), dim=1)
             z = rgb_dec(xy_normalized, ctx)
-            #print(f"z: {z}")
             ctx = feat_conv(z)
 
             probs = clf(z)

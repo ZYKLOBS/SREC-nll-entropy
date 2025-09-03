@@ -31,7 +31,7 @@ from src.l3c import logistic_mixture as lm
 from src.l3c import quantizer, timer
 
 from datetime import datetime #To get custom timestamp to save nll and entropy
-#Maybe instead track batch iteration and use that instead
+#Maybe instead track batch iteration and use that instead if time left for thesis -> edit time was not left for thesis
 
 
 class Bitcoding(object):

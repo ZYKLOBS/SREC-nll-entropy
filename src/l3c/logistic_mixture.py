@@ -49,6 +49,8 @@ import os
 
 from typing import Optional, List
 
+
+
 _NUM_PARAMS_RGB = 4  # mu, sigma, pi, lambda
 _NUM_PARAMS_OTHER = 3  # mu, sigma, pi
 _LOG_SCALES_MIN = -7.
@@ -147,9 +149,6 @@ class DiscretizedMixLogisticLoss(nn.Module):
 
     def log_cdf(self, lo, hi, means, log_scales):
         #CDF -> Cumulative distribution function? prob(X >= x)
-        #Mission -> anhand shape gucken wo wir im paper sind, 256 (Pixelwerte) evtl finden, am besten mit breakpoints und
-        #remote interpreter per ssh in pycharm? auch in vs code 
-        # dann kann man untersuchen x.shape z.B. und dann weiterlaufenb etc. guck yt
         assert torch.all(lo <= hi), f"{lo[lo > hi]} > {hi[lo > hi]}"
         assert lo.min() >= self.x_min and hi.max() <= self.x_max, \
             '{},{} not in {},{}'.format(
@@ -201,16 +200,16 @@ class DiscretizedMixLogisticLoss(nn.Module):
         #  NC1HW     NCKHW      NCKHW  NCKHW
         x, logit_pis, means, log_scales, _ = self._extract_non_shared(x, l)
 
-        #CHANGED, 2 ELECTRIC BOOGALOO
+        #CHANGED
         N, C, K, H, W = means.shape  # mixture dim = K
         entropy = torch.zeros((N, C, H, W), dtype=x.dtype, device=x.device)
 
         log_weights = F.log_softmax(logit_pis, dim=2)  # (N, C, K, H, W)
         for k in range(256):
-            # Add singleton dimension at mixture axis, here this step was given by chatgpt and I dont quite understand it yet
+            # Add singleton dimension at mixture axis, here this step was given by chatgpt and I dont quite understand it yet but else this operation fails since we need N C K H W
             k_tensor = torch.full((N, C, 1, H, W), k, dtype=x.dtype, device=x.device)
 
-            # N, C, K, H, W thanks to above tensor
+            # N, C, K, H, W thanks to above tensor, k_tensor as argument twice, see below log_cdf for reference
             log_probs_k = self.log_cdf(k_tensor, k_tensor, means, log_scales)
 
             # Combine with mixture weights like they do below for nll
@@ -219,11 +218,11 @@ class DiscretizedMixLogisticLoss(nn.Module):
             # Marginalize over mixtures
             log_prob_k = torch.logsumexp(log_probs_weighted, dim=2)  # (N, C, H, W)
 
-            # Convert to prob log^-1(x) = e^(x), I think dis is correct because we use natural log and not log_2
+            # Convert to prob log^-1(x) = e^(x), I think this is correct because we use natural log and not log_2
             # -> log_cdf_delta = torch.log(torch.clamp(cdf_delta, min=1e-12))
             prob_k = torch.exp(log_prob_k)
 
-            # Entropy according to paper + some stats to check if reasonable, (chatgpt says ok but idk i guess we'll see)
+            # Entropy according to paper + some stats to check if reasonable,
         entropy += -(prob_k * log_prob_k)
         #print("Entropy stats:")
         #print("Entropy Shape:", entropy.size())
@@ -244,14 +243,6 @@ class DiscretizedMixLogisticLoss(nn.Module):
         nll = -torch.logsumexp(log_probs_weighted, dim=2)
 
 
-        #CHANGED
-        #print("OTHER NLL: ", nll.shape)
-        #IMAGE IS RESOLUTION 768 x 335
-        #So I think you can interpret it like [slice1, slice2]
-                                            # [slice3, calculateslice 4]
-        #Maybe use spatial ave
-        #We could get this at a different point of time now, see network, does not matter if we get it here or somewhere else
-        #END OF CHANGE
         if entropy_storage_arr is not None:
             entropy_storage_arr.append(entropy.detach().cpu())
 
@@ -275,11 +266,6 @@ class DiscretizedMixLogisticLoss(nn.Module):
         Kp = l.shape[1]
 
         K = non_shared_get_K(Kp, C, self._num_params)
-        # HERE SEEMS TO BE SOMETHING WITH A DISTRIBUTION PI MU SIGMA
-        # we have, for each channel: K pi / K mu / K sigma / [K coeffs]
-        # note that this only holds for C=3 as for other channels,
-        # there would be more than 3*K coeffs
-        # but non_shared only holds for the C=3 case
         l = l.reshape(N, self._num_params, C, K, H, W)
 
         logit_probs = l[:, 0, ...]  # NCKHW

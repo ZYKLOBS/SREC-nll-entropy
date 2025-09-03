@@ -94,27 +94,10 @@ def main(
         filename = filenames[0]
         file_id = filename.split(".")[0]
         filepath = os.path.join(save_path, f"{file_id}.srec")
-        #print(f"In for loop in encode, type(x): {type(x)}")
-        #print(f"In for loop in encode shape of x: {x.size()}")
+
         with encoder_time_accumulator.execute():
             log_likelihood_bits, entropy_coding_bytes = coder.encode(
                 x, filepath)
-
-        # #CHANGE
-        # num_subpixels = np.prod(x.size())
-        # channels = x.size(1)
-        #
-        # entropy_bits = np.sum(entropy_coding_bytes) * 8
-        # entropy_per_subpixel = entropy_bits / num_subpixels
-        # entropy_per_pixel = entropy_per_subpixel * channels
-        #
-        # #DEBUG STATEMENTS
-        # print(f"[{filename}]")
-        # print(f"  Entropy(bpsp): {entropy_per_subpixel:.4f}")
-        # print(f"  Entropy(bpp) : {entropy_per_pixel:.4f}")
-        # #END OF DEBUG STATEMENTS
-        #
-        # #END OF CHANGE
 
 
         total_file_bytes += os.path.getsize(filepath)
