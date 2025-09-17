@@ -79,4 +79,4 @@ dependencies:
       - urllib3==1.26.20
       - werkzeug==2.2.3
       - zipp==3.15.0
-prefix: /home/turpckhj/L3C-PyTorch/src/ls/envs/srec
+prefix: /
