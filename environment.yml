@@ -73,7 +73,6 @@ dependencies:
       - tensorboard-plugin-wit==1.8.1
       - tifffile==2021.11.2
       - torch==1.1.0
-      - torchac-backend-gpu==1.0.0
       - torchvision==0.2.1
       - typing-extensions==4.7.1
       - urllib3==1.26.20
