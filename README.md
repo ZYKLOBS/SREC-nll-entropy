@@ -1,6 +1,6 @@
 # Lossless Image Compression through Super-Resolution with NLL & Entropy  <br>
 
-## THIS IS AN ADAPTATION OF https://github.com/caoscott/SReC !##
+## THIS IS AN ADAPTATION OF https://github.com/caoscott/SReC ! ##
 ## Their Paper [[Paper]](https://arxiv.org/abs/2004.02872) ## 
 
 
