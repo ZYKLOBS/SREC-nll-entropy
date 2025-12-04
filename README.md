@@ -5,7 +5,7 @@
 
 
 You can install this via the install instructions provided by the original SReC implementation, although I would suggest you use conda and the environment.yml I provide here instead of the requirements.txt they provide.  
-I created this video to show you how to get this Repo to run in case you need help or like videos more: TODO HIER LINK EINFUEGEN ZU VIDEO  
+I created this video to show you how to get this Repo to run in case you need help or like videos more: https://www.youtube.com/watch?v=e8n1pCHbyWg
 I would also suggest if you use this repo to listen to the remarks at the end of the video, even if you already installed SReC.  
 
 If you want to read up on details, you may refer to my thesis: https://github.com/ZYKLOBS/Bachelor-Thesis <br>
